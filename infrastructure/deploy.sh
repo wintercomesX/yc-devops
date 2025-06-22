@@ -11,6 +11,10 @@ yc iam key create \
   --service-account-id "$SERVICE_ACCOUNT_ID" \
   --output key.json
 
+#Save backend current state to avoid github error
+
+cp backend.tf backend_backup.tf
+
 # Read bucket and credentials info
 BUCKET_NAME=$(cat ../bucket_name.txt)
 ACCESS_KEY=$(cat ../access_key.txt)

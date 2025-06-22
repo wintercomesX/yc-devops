@@ -70,3 +70,11 @@ cd /root/yc-devops/k8s-configs
 rm test-app-deployment.yaml
 cp app_backup.yaml test-app-deployment.yaml
 rm app_backup.yaml
+
+#Restoring backend.tf
+cd
+cd /root/yc-devops/infrastructure
+rm backend.tf
+cp backend_backup.tf backend.tf
+rm backend_backup.tf
+

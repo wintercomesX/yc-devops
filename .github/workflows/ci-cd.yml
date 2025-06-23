@@ -1,0 +1,203 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  create:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY_ID: ${{ secrets.YC_REGISTRY_ID }}
+  
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for proper tagging
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Install Yandex Cloud CLI
+      run: |
+        curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+        echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+    
+    - name: Configure Yandex Cloud CLI
+      run: |
+        echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY }}' > key.json
+        yc config set service-account-key key.json
+        yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+        yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+    
+    - name: Configure Docker for Yandex Container Registry
+      run: |
+        yc container registry configure-docker
+    
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: cr.yandex/${{ env.REGISTRY_ID }}/test-app
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-,suffix=-{{date 'X'}},format=short
+    
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Run basic tests
+      run: |
+        # Test that the image can start
+        docker run --rm -d -p 8080:80 --name test-container cr.yandex/${{ env.REGISTRY_ID }}/test-app:${{ github.sha }}
+        sleep 10
+        
+        # Test health endpoint
+        curl -f http://localhost:8080/health || exit 1
+        
+        # Test main page
+        curl -f http://localhost:8080/ || exit 1
+        
+        # Cleanup
+        docker stop test-container
+
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.27.0'
+    
+    - name: Create kubeconfig
+      run: |
+        # Create kubeconfig from secrets (this is why we extracted components!)
+        mkdir -p $HOME/.kube
+        
+        # Decode and create CA certificate
+        echo "${{ secrets.K8S_CA_CERT }}" | base64 -d > ca.crt
+        
+        # Create kubeconfig from our extracted components
+        cat > $HOME/.kube/config <<EOF
+        apiVersion: v1
+        kind: Config
+        clusters:
+        - cluster:
+            certificate-authority: $(pwd)/ca.crt
+            server: ${{ secrets.K8S_SERVER }}
+          name: yc-cluster
+        contexts:
+        - context:
+            cluster: yc-cluster
+            user: github-actions
+          name: yc-context
+        current-context: yc-context
+        users:
+        - name: github-actions
+          user:
+            token: ${{ secrets.K8S_TOKEN }}
+        EOF
+        
+        # Test connection
+        kubectl cluster-info
+    
+    - name: Deploy to Kubernetes
+      run: |
+        # Change to test-app directory for context
+        cd test-app
+        
+        # Determine image tag
+        if [[ $GITHUB_REF == refs/tags/v* ]]; then
+          IMAGE_TAG=${GITHUB_REF#refs/tags/}
+        else
+          IMAGE_TAG=${{ github.sha }}
+        fi
+        
+        echo "Deploying image: cr.yandex/${{ env.REGISTRY_ID }}/test-app:$IMAGE_TAG"
+        
+        # Update deployment
+        kubectl set image deployment/test-app \
+          test-app=cr.yandex/${{ env.REGISTRY_ID }}/test-app:$IMAGE_TAG \
+          -n test-app
+        
+        # Wait for rollout to complete
+        kubectl rollout status deployment/test-app -n test-app --timeout=300s
+        
+        # Verify deployment
+        kubectl get pods -n test-app
+        kubectl get service test-app-service -n test-app
+    
+    - name: Run post-deployment tests
+      run: |
+        # Get service endpoint (for LoadBalancer) or use port-forward for testing
+        kubectl port-forward service/test-app-service 8080:80 -n test-app &
+        FORWARD_PID=$!
+        sleep 10
+        
+        # Test the deployed application
+        curl -f http://localhost:8080/health || exit 1
+        curl -f http://localhost:8080/ || exit 1
+        
+        # Cleanup
+        kill $FORWARD_PID || true
+        
+        echo "Deployment successful!"
+
+  cleanup:
+    name: Cleanup old images
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Install Yandex Cloud CLI
+      run: |
+        curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+        echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+    
+    - name: Configure Yandex Cloud CLI
+      run: |
+        echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY }}' > key.json
+        yc config set service-account-key key.json
+        yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+        yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+    
+    - name: Clean up old images (keep last 10)
+      run: |
+        # List images and keep only the 10 most recent
+        yc container image list \
+          --registry-id ${{ env.REGISTRY_ID }} \
+          --format json | \
+          jq -r '.[] | select(.name | contains("test-app")) | .id' | \
+          tail -n +11 | \
+          xargs -r -I {} yc container image delete {} || true

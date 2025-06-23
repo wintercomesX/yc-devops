@@ -133,28 +133,48 @@ jobs:
       run: |
         mkdir -p $HOME/.kube
         
-        # FIXED: Properly decode the base64 CA certificate
-        # The K8S_CA_CERT secret contains the certificate already base64 encoded
-        # We need to decode it and then save it to a file
-        echo "${{ secrets.K8S_CA_CERT }}" > ca_cert_b64.txt
+        # FIXED: Handle both PEM and base64 encoded certificates
+        CA_CERT_SECRET="${{ secrets.K8S_CA_CERT }}"
         
-        # Verify the base64 content is valid before decoding
-        if ! base64 -d ca_cert_b64.txt > /dev/null 2>&1; then
-          echo "❌ Invalid base64 in K8S_CA_CERT secret"
-          echo "Content preview (first 100 chars): $(head -c 100 ca_cert_b64.txt)"
-          exit 1
+        # Check if the secret contains a PEM certificate or base64 data
+        if [[ "$CA_CERT_SECRET" == "-----BEGIN CERTIFICATE-----"* ]]; then
+          echo "✅ CA certificate is in PEM format"
+          # Save PEM certificate directly to file
+          echo "$CA_CERT_SECRET" > ca.crt
+        else
+          echo "✅ CA certificate appears to be base64 encoded"
+          # Save to temp file and decode
+          echo "$CA_CERT_SECRET" > ca_cert_b64.txt
+          
+          # Verify the base64 content is valid before decoding
+          if ! base64 -d ca_cert_b64.txt > /dev/null 2>&1; then
+            echo "❌ Invalid base64 in K8S_CA_CERT secret"
+            echo "Content preview (first 100 chars): $(head -c 100 ca_cert_b64.txt)"
+            exit 1
+          fi
+          
+          # Decode and save the certificate
+          base64 -d ca_cert_b64.txt > ca.crt
+          rm -f ca_cert_b64.txt
         fi
         
-        # Decode and save the certificate
-        base64 -d ca_cert_b64.txt > ca.crt
-        
-        # Verify the certificate file was created
+        # Verify the certificate file was created and is not empty
         if [ ! -s ca.crt ]; then
           echo "❌ CA certificate file is empty"
           exit 1
         fi
         
-        echo "✅ CA certificate decoded successfully ($(wc -c < ca.crt) bytes)"
+        echo "✅ CA certificate ready ($(wc -c < ca.crt) bytes)"
+        
+        # Verify it's a valid certificate
+        if openssl x509 -in ca.crt -text -noout > /dev/null 2>&1; then
+          echo "✅ CA certificate is valid"
+        else
+          echo "❌ CA certificate appears to be invalid"
+          echo "Certificate content preview:"
+          head -5 ca.crt
+          exit 1
+        fi
         
         # Create kubeconfig
         cat > $HOME/.kube/config <<EOF
@@ -180,9 +200,6 @@ jobs:
         # Test connection
         echo "Testing Kubernetes connection..."
         kubectl cluster-info
-        
-        # Cleanup temporary files
-        rm -f ca_cert_b64.txt
     
     - name: Deploy to Kubernetes
       run: |

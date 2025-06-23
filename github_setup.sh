@@ -51,7 +51,7 @@ fi
 
 echo "✅ External endpoint found: $EXTERNAL_ENDPOINT"
 
-# Get cluster CA certificate - FIXED: Get it already base64 encoded
+# Get cluster CA certificate - FIXED: Handle PEM format properly
 CA_CERT_RAW=$(echo "$CLUSTER_INFO" | jq -r '.master.master_auth.cluster_ca_certificate')
 
 if [ -z "$CA_CERT_RAW" ] || [ "$CA_CERT_RAW" = "null" ]; then
@@ -59,9 +59,17 @@ if [ -z "$CA_CERT_RAW" ] || [ "$CA_CERT_RAW" = "null" ]; then
     exit 1
 fi
 
-# The CA cert from Yandex Cloud is already base64 encoded, but we need to make sure
-# it's properly formatted for GitHub secrets (no newlines in the secret value itself)
-CA_CERT=$(echo "$CA_CERT_RAW" | tr -d '\n\r')
+# Check if the certificate is in PEM format or base64 encoded
+if [[ "$CA_CERT_RAW" == "-----BEGIN CERTIFICATE-----"* ]]; then
+    echo "Certificate is in PEM format, converting to base64..."
+    # Extract the base64 content from PEM (remove headers and newlines)
+    CA_CERT=$(echo "$CA_CERT_RAW" | sed '/-----BEGIN CERTIFICATE-----/d' | sed '/-----END CERTIFICATE-----/d' | tr -d '\n\r ')
+else
+    echo "Certificate appears to be in base64 format already"
+    # The CA cert from Yandex Cloud is already base64 encoded, but we need to make sure
+    # it's properly formatted for GitHub secrets (no newlines in the secret value itself)
+    CA_CERT=$(echo "$CA_CERT_RAW" | tr -d '\n\r')
+fi
 
 echo "✅ CA certificate retrieved and formatted (length: ${#CA_CERT} characters)"
 
@@ -212,9 +220,18 @@ EOF
 echo "Testing GitHub Actions kubeconfig..."
 if KUBECONFIG=test-kubeconfig.yaml kubectl cluster-info >/dev/null 2>&1; then
     echo "✅ GitHub Actions kubeconfig works correctly!"
+    echo "✅ CA certificate is properly base64 encoded for GitHub secrets"
 else
     echo "❌ GitHub Actions kubeconfig test failed!"
-    echo "Please check the values above."
+    echo "Let's test the certificate format..."
+    
+    # Test if we can decode the certificate
+    if echo "$CA_CERT" | base64 -d > /dev/null 2>&1; then
+        echo "✅ Certificate can be decoded from base64"
+    else
+        echo "❌ Certificate cannot be decoded from base64"
+        echo "This might indicate a formatting issue."
+    fi
 fi
 
 # Cleanup test file

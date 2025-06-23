@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: test-app
-        image: cr.yandex/crpvoe6a02khpe3b28ib/test-app:latest  # Replace with actual registry ID
+        image: cr.yandex/crpnsqhhcflthk1e010c/test-app:v1.0.0  # Replace with actual registry ID
         ports:
         - containerPort: 80
         resources:

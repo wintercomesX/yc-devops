@@ -2,7 +2,7 @@
 cd test-app
 
 # Build image
-docker build -t test-app:v1.0.0 .
+docker build -t test-app:1.0.0 .
 
 # Get registry info
 REGISTRY_ID=$(cd /root/yc-devops/infrastructure && terraform output -raw container_registry_id)

@@ -3,11 +3,11 @@ terraform {
     endpoints = {
       s3 = "https://storage.yandexcloud.net"
     }
-    bucket                      = "terraform-state-7f7ac65d"  # Replace with actual bucket name
+    bucket                      = "terraform-state-f24c2cc8"  # Replace with actual bucket name
     region                      = "ru-central1"
     key                         = "terraform.tfstate"
-    access_key                  = "YCAJEV1sOru-4ltIydCI0p8sp"   # Will be replaced
-    secret_key                  = "YCM6uxEnwZB4iWzOXBK9cl1gj7glJrntomaM99x_"   # Will be replaced
+    access_key                  = "YCAJEfR8Qmrg6CYIKXQeFDCfV"   # Will be replaced
+    secret_key                  = "YCPJJaLqkWUfc_O26b3h44ScdpwEzAKD1WG7vdlG"   # Will be replaced
     skip_region_validation      = true
     skip_credentials_validation = true
     skip_requesting_account_id  = true

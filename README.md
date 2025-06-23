@@ -28,7 +28,8 @@ bash github_setup.sh
 bash deploy.sh 
 ```
 
-## Резултаты выполнения
+## Результаты выполнения
+
 ## Шаг 1 (Поднятие бакета с terrafom.state)
 
 ![image](https://github.com/user-attachments/assets/a8ed13ec-5270-4d33-86d6-08031e7a594a)
@@ -38,5 +39,31 @@ bash deploy.sh
 Как видно из скриншотов - бакет поднялся и хранит в себе terrafom.state
 
 ---
+![image](https://github.com/user-attachments/assets/73bc5afb-f25e-49dd-b4ab-e0bf679a1276)
+
+Terraform более не просит подтверждать применение конфигурации, т.к. сравнивает передаваемый стейт со стейтом в бакете.
+
+## Шаг 2 (Поднятие Kubernetes кластера)
+
+Данный шаг выполнялся через Yandex Managed Service for Kubernetes
+
+![image](https://github.com/user-attachments/assets/68d94bae-1769-4b4f-b979-ca2c4607fdd9)
+
+```
+kubectl get pods --all-namespaces
+```
+![image](https://github.com/user-attachments/assets/e0fa8110-1d18-48a0-a6a1-cf5e690eadbb)
+
+```
+nano ~/.kube/config
+```
+![image](https://github.com/user-attachments/assets/49fbc699-0535-4578-a5d8-f6a993654bda)
+
+![image](https://github.com/user-attachments/assets/372e3ec7-d6fe-4bf6-9c1a-73f2d9123e5e)
+
+![image](https://github.com/user-attachments/assets/05848a6b-aab9-4f87-9f6b-aa7d3dc97b94)
+
+Как видно из скриншотов - пространства имен созданы и в конфиг добавлена корректная запись.
+
 
 

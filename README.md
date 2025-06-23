@@ -35,8 +35,8 @@ bash deploy.sh
 
 ![image](https://github.com/user-attachments/assets/d80f3c7e-423a-4af8-a9f8-474c2c4b5897)
 
----
 Как видно из скриншотов - бакет поднялся и хранит в себе terrafom.state
+
 ---
 
 

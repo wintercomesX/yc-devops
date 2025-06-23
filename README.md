@@ -65,5 +65,51 @@ nano ~/.kube/config
 
 Как видно из скриншотов - пространства имен созданы и в конфиг добавлена корректная запись.
 
+## Шаг 3 (Создание тестового приложения)
+
+[Dockerfile](https://github.com/wintercomesX/yc-devops/blob/main/test-app/Dockerfile)
+
+![image](https://github.com/user-attachments/assets/d4331679-5b5a-481d-8133-fbe68dbc0871)
+
+В регестри созданы докерфайлы.
+
+## Шаг 4 (Разворачиваем мониторинг и поднимаем сервис)
+
+[Репозиторий с кодом](https://github.com/wintercomesX/yc-devops/tree/main/k8s-configs)
+
+Мониторинг поднимался с помощью HELM.
+
+![image](https://github.com/user-attachments/assets/68a579d1-c7eb-43c3-a8c9-ad786e44f04f)
+
+Графана успешно открывается по 80 порту и отдает данные по кластеру кубера.
+
+---
+
+![image](https://github.com/user-attachments/assets/1377d13e-2b7c-4758-91dc-95d8f8ac939b)
+
+Приложение успешно открывается по 80 порту и отдает корректную страницу.
+
+## Шаг 5 (Настройка CI-CD)
+
+В качестве CI-CD используется Github Actions. Просто и удобно.
+
+![image](https://github.com/user-attachments/assets/993f66ac-98bb-42e0-8245-e2abeeb36946)
+
+![image](https://github.com/user-attachments/assets/ed372e61-42ee-4388-9a2c-f2f456ceed5f)
+
+![image](https://github.com/user-attachments/assets/35aac355-d20f-4aee-93bf-22955a4de200)
+
+![image](https://github.com/user-attachments/assets/2db48cb3-a83a-4dbd-a042-baca8ddb53ee)
+
+![image](https://github.com/user-attachments/assets/c357909b-bfac-46e2-be0f-3fe481631a4c)
+
+
+Скриншоты показывают что пайплайн работает. Docker образ был задеплоен в кластер.
+
+
+
+
+
+
 
 

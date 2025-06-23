@@ -49,7 +49,7 @@ jobs:
     - name: Generate Docker tags
       id: meta
       run: |
-        # Generate consistent tag based on context
+        # Generated consistent tag based on context
         if [[ $GITHUB_REF == refs/tags/v* ]]; then
           # For version tags, use the version
           TAG=${GITHUB_REF#refs/tags/}

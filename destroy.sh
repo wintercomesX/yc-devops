@@ -75,6 +75,6 @@ rm app_backup.yaml
 cd
 cd /root/yc-devops/infrastructure
 rm backend.tf
-cp backend_backup.tf backend.tf
-rm backend_backup.tf
+cp /root/yc-devops/backend_backup.tf backend.tf
+rm /root/yc-devops/backend_backup.tf
 

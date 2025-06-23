@@ -13,7 +13,7 @@ yc iam key create \
 
 #Save backend current state to avoid github error
 
-cp backend.tf backend_backup.tf
+cp backend.tf /root/yc-devops/backend_backup.tf
 
 # Read bucket and credentials info
 BUCKET_NAME=$(cat ../bucket_name.txt)

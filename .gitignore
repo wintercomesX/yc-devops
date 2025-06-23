@@ -10,7 +10,7 @@ key.json
 access_key.txt
 secret_key.txt
 bucket_name.txt
-backend.tf
+./infrastructure/backend.tf
 backend_backup.tf
 cluster-ca.crt
 # OS files

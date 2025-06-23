@@ -51,7 +51,7 @@ fi
 
 echo "✅ External endpoint found: $EXTERNAL_ENDPOINT"
 
-# Get cluster CA certificate - FIXED: Handle PEM format properly
+# Get cluster CA certificate - FIXED: Ensure proper base64 encoding for GitHub secrets
 CA_CERT_RAW=$(echo "$CLUSTER_INFO" | jq -r '.master.master_auth.cluster_ca_certificate')
 
 if [ -z "$CA_CERT_RAW" ] || [ "$CA_CERT_RAW" = "null" ]; then
@@ -59,19 +59,28 @@ if [ -z "$CA_CERT_RAW" ] || [ "$CA_CERT_RAW" = "null" ]; then
     exit 1
 fi
 
-# Check if the certificate is in PEM format or base64 encoded
+# IMPORTANT: For GitHub Actions, we need base64-encoded certificate data
+# This will be decoded back to PEM format in the workflow
 if [[ "$CA_CERT_RAW" == "-----BEGIN CERTIFICATE-----"* ]]; then
-    echo "Certificate is in PEM format, converting to base64..."
-    # Extract the base64 content from PEM (remove headers and newlines)
-    CA_CERT=$(echo "$CA_CERT_RAW" | sed '/-----BEGIN CERTIFICATE-----/d' | sed '/-----END CERTIFICATE-----/d' | tr -d '\n\r ')
+    echo "Certificate is in PEM format, encoding to base64 for GitHub secret..."
+    # Convert PEM to base64 (single line, no headers)
+    CA_CERT=$(echo "$CA_CERT_RAW" | base64 -w 0)
 else
     echo "Certificate appears to be in base64 format already"
-    # The CA cert from Yandex Cloud is already base64 encoded, but we need to make sure
-    # it's properly formatted for GitHub secrets (no newlines in the secret value itself)
-    CA_CERT=$(echo "$CA_CERT_RAW" | tr -d '\n\r')
+    # Clean up any whitespace/newlines
+    CA_CERT=$(echo "$CA_CERT_RAW" | tr -d '\n\r ')
 fi
 
-echo "✅ CA certificate retrieved and formatted (length: ${#CA_CERT} characters)"
+echo "✅ CA certificate prepared for GitHub secret (length: ${#CA_CERT} characters)"
+
+# Verify we can decode it back to a valid certificate
+echo "Verifying certificate can be decoded..."
+if echo "$CA_CERT" | base64 -d | openssl x509 -text -noout > /dev/null 2>&1; then
+    echo "✅ Certificate verification successful"
+else
+    echo "❌ Certificate verification failed!"
+    exit 1
+fi
 
 echo ""
 echo "3. Creating service account for GitHub Actions..."
@@ -196,13 +205,16 @@ echo ""
 echo "To verify these settings work, you can test locally:"
 echo ""
 
-# Create a test kubeconfig
-cat > test-kubeconfig.yaml <<EOF
+# Create a test kubeconfig using the same logic as the GitHub Actions workflow
+mkdir -p ./test-kube
+echo "$CA_CERT" | base64 -d > ./test-kube/ca.crt
+
+cat > ./test-kube/config <<EOF
 apiVersion: v1
 kind: Config
 clusters:
 - cluster:
-    certificate-authority-data: $CA_CERT
+    certificate-authority: $(pwd)/test-kube/ca.crt
     server: $EXTERNAL_ENDPOINT
   name: yc-cluster
 contexts:
@@ -217,31 +229,37 @@ users:
     token: $SA_TOKEN
 EOF
 
-echo "Testing GitHub Actions kubeconfig..."
-if KUBECONFIG=test-kubeconfig.yaml kubectl cluster-info >/dev/null 2>&1; then
+echo "Testing GitHub Actions kubeconfig (same format as workflow)..."
+if KUBECONFIG=./test-kube/config kubectl cluster-info >/dev/null 2>&1; then
     echo "✅ GitHub Actions kubeconfig works correctly!"
-    echo "✅ CA certificate is properly base64 encoded for GitHub secrets"
+    echo "✅ CA certificate format is compatible with kubectl"
 else
     echo "❌ GitHub Actions kubeconfig test failed!"
-    echo "Let's test the certificate format..."
+    echo "Debugging certificate..."
     
-    # Test if we can decode the certificate
-    if echo "$CA_CERT" | base64 -d > /dev/null 2>&1; then
-        echo "✅ Certificate can be decoded from base64"
+    # Check if certificate is valid PEM
+    if openssl x509 -in ./test-kube/ca.crt -text -noout > /dev/null 2>&1; then
+        echo "✅ Certificate is valid PEM format"
     else
-        echo "❌ Certificate cannot be decoded from base64"
-        echo "This might indicate a formatting issue."
+        echo "❌ Certificate is not valid PEM format"
+        echo "First few lines of certificate file:"
+        head -5 ./test-kube/ca.crt
     fi
 fi
 
-# Cleanup test file
-rm -f test-kubeconfig.yaml
+# Cleanup test files
+rm -rf ./test-kube
 
 echo ""
 echo "=== NEXT STEPS ==="
 echo "1. Add all the secrets above to your GitHub repository"
 echo "2. Make sure your cluster has external endpoint enabled"
 echo "3. Push a new commit or create a tag to trigger the workflow"
+echo ""
+echo "The main fix applied:"
+echo "- CA certificate is now properly encoded as base64 for GitHub secrets"
+echo "- Workflow decodes it back to PEM format and saves to a file"
+echo "- kubectl uses certificate-authority file path instead of inline data"
 echo ""
 
 # Save values to a file for easy reference

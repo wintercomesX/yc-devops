@@ -13,6 +13,7 @@ bucket_name.txt
 ./infrastructure/backend.tf
 backend_backup.tf
 cluster-ca.crt
+github-secrets.txt
 # OS files
 .DS_Store
 Thumbs.db

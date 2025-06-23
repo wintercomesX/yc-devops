@@ -49,7 +49,7 @@ jobs:
     - name: Generate Docker tags
       id: meta
       run: |
-        # Generated consistent tag based on context
+        # Generate consistent tag based on context
         if [[ $GITHUB_REF == refs/tags/v* ]]; then
           # For version tags, use the version
           TAG=${GITHUB_REF#refs/tags/}
@@ -88,8 +88,8 @@ jobs:
       id: build
       uses: docker/build-push-action@v5
       with:
-        context: ./test-app  # Point to the test-app directory
-        file: ./test-app/Dockerfile  # Explicitly specify Dockerfile location
+        context: ./test-app
+        file: ./test-app/Dockerfile
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         cache-from: type=gha
@@ -124,69 +124,45 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Install Yandex Cloud CLI
+      run: |
+        curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+        echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+    
+    - name: Configure Yandex Cloud CLI
+      run: |
+        echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY }}' > key.json
+        yc config set service-account-key key.json
+        yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+        yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+    
     - name: Setup kubectl
       uses: azure/setup-kubectl@v3
       with:
         version: 'v1.27.0'
     
-    - name: Create kubeconfig
+    - name: Get Kubernetes credentials from Yandex Cloud
       run: |
-        mkdir -p $HOME/.kube
+        # Get cluster ID - you can either set K8S_CLUSTER_ID as a secret or use cluster name
+        CLUSTER_ID="${{ secrets.K8S_CLUSTER_ID }}"
         
-        # FIXED: Use certificate-authority-data instead of file path
-        CA_CERT_SECRET="${{ secrets.K8S_CA_CERT }}"
+        # If you don't have cluster ID as secret, get it by listing clusters
+        if [ -z "$CLUSTER_ID" ]; then
+          echo "Getting cluster ID from available clusters..."
+          CLUSTER_ID=$(yc managed-kubernetes cluster list --format json | jq -r '.[0].id')
+        fi
         
-        if [ -z "$CA_CERT_SECRET" ]; then
-          echo "❌ K8S_CA_CERT secret is not set"
+        if [ -z "$CLUSTER_ID" ] || [ "$CLUSTER_ID" = "null" ]; then
+          echo "❌ Could not find cluster ID"
+          echo "Available clusters:"
+          yc managed-kubernetes cluster list
           exit 1
         fi
         
-        # Ensure the certificate is in base64 format for certificate-authority-data
-        if [[ "$CA_CERT_SECRET" == "-----BEGIN CERTIFICATE-----"* ]]; then
-          echo "✅ CA certificate is in PEM format, converting to base64"
-          # Convert PEM to base64 for certificate-authority-data
-          CA_CERT_BASE64=$(echo "$CA_CERT_SECRET" | base64 -w 0)
-        else
-          echo "✅ CA certificate appears to be base64 encoded"
-          # Clean up any whitespace
-          CA_CERT_BASE64=$(echo "$CA_CERT_SECRET" | tr -d '\n\r ')
-        fi
+        echo "Using cluster ID: $CLUSTER_ID"
         
-        # Verify the base64 content is valid
-        if ! echo "$CA_CERT_BASE64" | base64 -d > /dev/null 2>&1; then
-          echo "❌ Invalid base64 certificate data"
-          echo "Content preview (first 100 chars): $(echo "$CA_CERT_BASE64" | head -c 100)"
-          exit 1
-        fi
-        
-        # Verify it decodes to a valid certificate
-        if echo "$CA_CERT_BASE64" | base64 -d | openssl x509 -text -noout > /dev/null 2>&1; then
-          echo "✅ CA certificate is valid (base64 length: ${#CA_CERT_BASE64} chars)"
-        else
-          echo "❌ CA certificate is not valid"
-          exit 1
-        fi
-        
-        # Create kubeconfig using certificate-authority-data (inline base64)
-        cat > $HOME/.kube/config <<EOF
-apiVersion: v1
-kind: Config
-clusters:
-- cluster:
-    certificate-authority-data: $CA_CERT_BASE64
-    server: ${{ secrets.K8S_SERVER }}
-  name: yc-cluster
-contexts:
-- context:
-    cluster: yc-cluster
-    user: github-actions
-  name: yc-context
-current-context: yc-context
-users:
-- name: github-actions
-  user:
-    token: ${{ secrets.K8S_TOKEN }}
-EOF
+        # Get credentials directly from Yandex Cloud
+        yc managed-kubernetes cluster get-credentials $CLUSTER_ID --external --force
         
         # Test connection
         echo "Testing Kubernetes connection..."

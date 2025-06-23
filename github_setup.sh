@@ -51,15 +51,19 @@ fi
 
 echo "✅ External endpoint found: $EXTERNAL_ENDPOINT"
 
-# Get cluster CA certificate
-CA_CERT=$(echo "$CLUSTER_INFO" | jq -r '.master.master_auth.cluster_ca_certificate')
+# Get cluster CA certificate - FIXED: Get it already base64 encoded
+CA_CERT_RAW=$(echo "$CLUSTER_INFO" | jq -r '.master.master_auth.cluster_ca_certificate')
 
-if [ -z "$CA_CERT" ] || [ "$CA_CERT" = "null" ]; then
+if [ -z "$CA_CERT_RAW" ] || [ "$CA_CERT_RAW" = "null" ]; then
     echo "❌ Could not get cluster CA certificate!"
     exit 1
 fi
 
-echo "✅ CA certificate retrieved (length: ${#CA_CERT} characters)"
+# The CA cert from Yandex Cloud is already base64 encoded, but we need to make sure
+# it's properly formatted for GitHub secrets (no newlines in the secret value itself)
+CA_CERT=$(echo "$CA_CERT_RAW" | tr -d '\n\r')
+
+echo "✅ CA certificate retrieved and formatted (length: ${#CA_CERT} characters)"
 
 echo ""
 echo "3. Creating service account for GitHub Actions..."
@@ -137,7 +141,7 @@ FOLDER_ID=$(yc config get folder-id)
 
 # Get Service Account Key
 if [ -f "infrastructure/key.json" ]; then
-    SA_KEY=$(cat infrastructure/key.json)
+    SA_KEY=$(cat infrastructure/key.json | tr -d '\n\r')
 else
     echo "❌ Service account key file not found at infrastructure/key.json"
     echo "Please make sure you have the service account key file."

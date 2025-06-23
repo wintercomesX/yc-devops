@@ -11,7 +11,8 @@ access_key.txt
 secret_key.txt
 bucket_name.txt
 backend.hcl
-
+backend_backup.tf
+cluster-ca.crt
 # OS files
 .DS_Store
 Thumbs.db
